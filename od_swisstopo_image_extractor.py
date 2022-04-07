@@ -600,7 +600,7 @@ class SwissImagesDlg (c4d.gui.GeDialog):
         doc.InsertMaterial(mat)
         doc.AddUndo(c4d.UNDOTYPE_NEWOBJ,mat)
 
-        plan = creer_plan(name_img,mat,(xmax-xmin),(ymax-ymin), projection= 'top')
+        plan = creer_plan(name,mat,(xmax-xmin),(ymax-ymin), projection= 'top')
         centre = c4d.Vector((xmax+xmin)/2,0,(ymax+ymin)/2) - doc[CONTAINER_ORIGIN]
         plan.SetAbsPos(centre)
         doc.InsertObject(plan)
