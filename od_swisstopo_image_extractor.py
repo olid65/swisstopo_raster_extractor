@@ -5,20 +5,116 @@ import json
 import os.path
 import math
 import urllib.request
+from datetime import datetime
 
 
 CONTAINER_ORIGIN =1026473
 
-NB_PIXEL_MAX = 4096
+NB_PIXEL_MAX = 4096*2
 
-#CONTAINER_ORIGIN =1026473
-ORIGIN_DEFAULT = c4d.Vector(2500370.00,0.0,1117990.0) # île Rousseau
+NOT_SAVED_TXT = "Le document doit être enregistré pour pouvoir copier les textures dans le dossier tex, vous pourrez le faire à la prochaine étape\nVoulez-vous continuer ?"
+DOC_NOT_IN_METERS_TXT = "Les unités du document ne sont pas en mètres, si vous continuez les unités seront modifiées.\nVoulez-vous continuer ?"
 
-# Script state in the menu or the command palette
-# Return True or c4d.CMD_ENABLED to enable, False or 0 to disable
-# Alternatively return c4d.CMD_ENABLED|c4d.CMD_VALUE to enable and check/mark
-#def state():
-#    return True
+
+O_DEFAUT = c4d.Vector(2500000.00,0.0,1120000.00)
+
+FORMAT = 'png'
+
+NOM_DOSSIER_IMG = 'tex/__back_image'
+
+def empriseVueHaut(bd,origine):
+
+    dimension = bd.GetFrame()
+    largeur = dimension["cr"]-dimension["cl"]
+    hauteur = dimension["cb"]-dimension["ct"]
+
+    mini =  bd.SW(c4d.Vector(0,hauteur,0)) + origine
+    maxi = bd.SW(c4d.Vector(largeur,0,0)) + origine
+
+    return  mini,maxi,largeur,hauteur
+
+def display_wms_swisstopo(layer):
+    
+    #le doc doit être en mètres
+    doc = c4d.documents.GetActiveDocument()
+
+    usdata = doc[c4d.DOCUMENT_DOCUNIT]
+    scale, unit = usdata.GetUnitScale()
+    if  unit!= c4d.DOCUMENT_UNIT_M:
+        rep = c4d.gui.QuestionDialog(DOC_NOT_IN_METERS_TXT)
+        if not rep : return
+        unit = c4d.DOCUMENT_UNIT_M
+        usdata.SetUnitScale(scale, unit)
+        doc[c4d.DOCUMENT_DOCUNIT] = usdata
+
+    #si le document n'est pas enregistré on enregistre
+    path_doc = doc.GetDocumentPath()
+
+    while not path_doc:
+        rep = c4d.gui.QuestionDialog(NOT_SAVED_TXT)
+        if not rep : return
+        c4d.documents.SaveDocument(doc, "", c4d.SAVEDOCUMENTFLAGS_DIALOGSALLOWED, c4d.FORMAT_C4DEXPORT)
+        c4d.CallCommand(12098) # Enregistrer le projet
+        path_doc = doc.GetDocumentPath()
+
+    dossier_img = os.path.join(path_doc,NOM_DOSSIER_IMG)
+
+    origine = doc[CONTAINER_ORIGIN]
+    if not origine:
+        doc[CONTAINER_ORIGIN] = O_DEFAUT
+        origine = doc[CONTAINER_ORIGIN]
+    bd = doc.GetActiveBaseDraw()
+    camera = bd.GetSceneCamera(doc)
+    if not camera[c4d.CAMERA_PROJECTION]== c4d.Ptop:
+        c4d.gui.MessageDialog("""Ne fonctionne qu'avec une caméra en projection "haut" """)
+        return
+    
+    #pour le format de la date regarder : https://docs.python.org/fr/3/library/datetime.html#strftime-strptime-behavior
+    dt = datetime.now()
+    suffixe_time = dt.strftime("%y%m%d_%H%M%S")
+
+    fn = f'ortho{suffixe_time}.png'
+    fn_img = os.path.join(dossier_img,fn)
+    
+    if not os.path.isdir(dossier_img):
+            os.makedirs(dossier_img)
+    
+    mini,maxi,width_img,height_img = empriseVueHaut(bd,origine)
+    #print (mini.x,mini.z,maxi.x,maxi.z)
+    bbox = f'{mini.x},{mini.z},{maxi.x},{maxi.z}'
+    
+    url = f'http://wms.geo.admin.ch/?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS={layer}&STYLES=default&CRS=EPSG:2056&BBOX={bbox}&WIDTH={width_img}&HEIGHT={height_img}&FORMAT=image/png'
+    #print(url)
+    
+    
+    
+    try:
+        x = urllib.request.urlopen(url)
+    
+        with open(fn_img,'wb') as saveFile:
+            saveFile.write(x.read())
+            
+    except Exception as e:
+        print(str(e))
+        
+    #on récupère l'ancienne image
+    old_fn = os.path.join(dossier_img,bd[c4d.BASEDRAW_DATA_PICTURE])
+
+    bd[c4d.BASEDRAW_DATA_PICTURE] = fn
+    bd[c4d.BASEDRAW_DATA_SIZEX] = maxi.x-mini.x
+    bd[c4d.BASEDRAW_DATA_SIZEY] = maxi.z-mini.z
+
+
+    bd[c4d.BASEDRAW_DATA_OFFSETX] = (maxi.x+mini.x)/2 -origine.x
+    bd[c4d.BASEDRAW_DATA_OFFSETY] = (maxi.z+mini.z)/2-origine.z
+    #bd[c4d.BASEDRAW_DATA_SHOWPICTURE] = False
+
+    #suppression de l'ancienne image
+    #TODO : s'assurer que c'est bien une image générée NE PAS SUPPRIMER N'IMPORTE QUOI !!!
+    if os.path.exists(old_fn):
+        try : os.remove(old_fn)
+        except : pass
+    c4d.EventAdd(c4d.EVENT_FORCEREDRAW)
 
 def tex_folder(doc, subfolder = None):
     """crée le dossier tex s'il n'existe pas et renvoie le chemin
@@ -254,11 +350,12 @@ def coordFromClipboard():
 # DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG DIALOG
 #####################################################################################
 
-class EsriWorldTerrainDlg (c4d.gui.GeDialog):
+class SwissImagesDlg (c4d.gui.GeDialog):
 
     LIST_WEB_SERVICES = [
-                         {'name':'Carte Dufour première édition','layer':'ch.swisstopo.hiks-dufour'},
-                         {'name':'Carte Siegfried première édition','layer':'ch.swisstopo.hiks-siegfried'},
+                         {'name':'Carte Dufour première édition (entre 1844 et 1864)','layer':'ch.swisstopo.hiks-dufour'},
+                         {'name':'Carte Siegfried première édition (entre 1870 et 1926)','layer':'ch.swisstopo.hiks-siegfried'},
+                         {'name':'Orthophoto 1946','layer':'ch.swisstopo.swissimage-product_1946'},
                          {'name':'Orthophoto 10cm','layer':'ch.swisstopo.images-swissimage'},
                          {'name':"Carte nationale couleur 1:10'000",'layer':'ch.swisstopo.landeskarte-farbe-10'},
                          {'name':"Carte nationale grise 1:10'000",'layer':'ch.swisstopo.landeskarte-grau-10'},
@@ -269,14 +366,7 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
                          {'name':"Atlas géologique AG25",'layer':'ch.swisstopo.geologie-geologischer_atlas'},
                         ]
 
-    ID_ORTHO_DISPLAY = 1059233
-    ID_TOPOMAP_DISPLAY = 1059234
-    ID_STREETMAP_DISPLAY = 1059235
-
-    ID_TERRAIN_EXTRACTOR = 1059237 
-
-
-    NB_POLY_MAX = 4096 #nombre de poly max en largeur ou hauteur
+    NB_POLY_MAX = 4096*2 #nombre de poly max en largeur ou hauteur
     #NB_POLY_MAX_SUM = 8000000 #apparemment il y a un nombre total à ne pas dépasser !
 
     ID_GRP_MAIN = 1000
@@ -294,8 +384,6 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
     ID_TXT_XMAX = 1016
     ID_TXT_YMIN = 1017
     ID_TXT_YMAX = 1018
-
-    
 
     ID_GRP_ETENDUE_BTONS = 1020
     ID_BTON_EMPRISE_VUE_HAUT = 1021
@@ -318,14 +406,11 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
 
     ID_GRP_BUTTONS = 1070
     
-    #ID_BTON_TEST_JETON = 1071
     ID_BTON_REQUEST = 1072
-    ID_BTON_ESRI_TERRAIN = 1073
 
 
 
-    TXT_TITRE = "Extraction ESRI Images"
-    #TXT_REMARQUE = "Pour que l'extraction soit possible vous devez disposer d'un compte ESRI"
+    TXT_TITRE = "Extraction d'images swisstopo"
     TXT_TITRE_GRP_CHOIX_IMAGE = "Choix de l'image"
     TXT_DISPLAY = "Afficher dans la vue de haut"
     TXT_TITRE_GRP_ETENDUE = "Etendue de l'extraction"
@@ -347,7 +432,6 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
     TXT_FILE_EXIST = "Il semble que le fichier mage existe déjà, voulez vous continuer ?"
     TXT_DOWNLOAD_PROBLEM = "Problème lors du téléchargement de l'image"
     TXT_FILE_CREATION_PROBLEM = "Problème lors de la création du fichier image"
-    TXT_BTON_ESRI_TERRAIN = "ESRI Extracteur de terrain"
 
     MSG_NO_OBJECT = "Il n' y a pas d'objet sélectionné !"
     MSG_NO_CLIPBOARD = "Le presse-papier doit contenir 4 valeurs numériques séparées par des virgules dans cet ordre xmin,xmax,ymin,ymax"
@@ -480,9 +564,9 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
         layer = service['layer']
         #on prend le nom du service en minuscule et on remplace l'espaces par underscore
         name =service['name'].lower().replace(' ','_')
-        name_img = f'esri_{name}_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}_.{format}'
+        name_img = f'{name}_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}_.{format}'
 
-        pth_dir = tex_folder(doc, subfolder = 'ESRI_images')
+        pth_dir = tex_folder(doc, subfolder = 'swisstopo_images')
         fn_img = os.path.join(pth_dir,name_img)
 
         if os.path.isfile(fn_img):
@@ -548,13 +632,7 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
         if id == self.ID_BTON_DISPLAY:
             choix_list = self.GetInt32(self.ID_LST_CHOIX_IMG)
             #print(self.LIST_WEB_SERVICES(choix_list-1)['url_base'])
-            service = self.LIST_WEB_SERVICES[choix_list-1]['name']
-            if service == 'Orthophoto':
-                c4d.CallCommand(self.ID_ORTHO_DISPLAY)
-            elif service == 'Carte topo':
-                c4d.CallCommand(self.ID_TOPOMAP_DISPLAY)
-            elif service == 'Carte rues':
-                c4d.CallCommand(self.ID_STREETMAP_DISPLAY)
+            display_wms_swisstopo(self.LIST_WEB_SERVICES[choix_list-1]['layer'])
             
 
         # MODIFICATIONS COORDONNEES
@@ -623,9 +701,6 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
         if id == self.ID_BTON_REQUEST:           
             #extraction de l'image
             fn_img = self.extract_IMG()
-
-        if id == self.ID_BTON_ESRI_TERRAIN:
-            c4d.CallCommand(self.ID_TERRAIN_EXTRACTOR)
 
         return True
 
@@ -707,8 +782,6 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
         self.GroupEnd()
         # FIN GROUPE ETENDUE
 
-
-
         # DEBUT GROUPE TAILLE
         self.GroupBegin(self.ID_GRP_TAILLE,title = self.TXT_TITTRE_GRP_TAILLE,flags=c4d.BFH_SCALEFIT, cols=1, rows=2)
         self.GroupBorderSpace(10, 10, 10, 10)
@@ -749,8 +822,6 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
         self.bton_request = self.AddButton(self.ID_BTON_REQUEST, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name=self.TXT_BTON_REQUEST)
         #self.Enable(self.bton_request,False)
 
-        self.AddButton(self.ID_BTON_ESRI_TERRAIN, flags=c4d.BFH_SCALEFIT, initw=0, inith=0, name=self.TXT_BTON_ESRI_TERRAIN)
-
         self.GroupEnd()
         # FIN GROUPE BOUTONS
 
@@ -762,7 +833,7 @@ class EsriWorldTerrainDlg (c4d.gui.GeDialog):
 def main():
     global dlg
     doc = c4d.documents.GetActiveDocument()
-    dlg = EsriWorldTerrainDlg(doc)
+    dlg = SwissImagesDlg(doc)
     dlg.Open(c4d.DLG_TYPE_ASYNC)
 
 # Execute main()
