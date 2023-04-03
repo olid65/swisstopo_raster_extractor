@@ -353,17 +353,17 @@ def coordFromClipboard():
 class SwissImagesDlg (c4d.gui.GeDialog):
 
     LIST_WEB_SERVICES = [
-                         {'name':'Carte Dufour première édition (entre 1844 et 1864)','layer':'ch.swisstopo.hiks-dufour'},
-                         {'name':'Carte Siegfried première édition (entre 1870 et 1926)','layer':'ch.swisstopo.hiks-siegfried'},
-                         {'name':'Orthophoto 1946','layer':'ch.swisstopo.swissimage-product_1946'},
-                         {'name':'Orthophoto 10cm','layer':'ch.swisstopo.images-swissimage'},
-                         {'name':"Carte nationale couleur 1:10'000",'layer':'ch.swisstopo.landeskarte-farbe-10'},
-                         {'name':"Carte nationale grise 1:10'000",'layer':'ch.swisstopo.landeskarte-grau-10'},
-                         {'name':"Carte nationale couleur 1:25'000",'layer':'ch.swisstopo.pixelkarte-farbe-pk25.noscale'},
-                         {'name':"Carte nationale couleur 1:50'000",'layer':'ch.swisstopo.pixelkarte-farbe-pk50.noscale'},
-                         {'name':"Carte nationale couleur échelle auto",'layer':'ch.swisstopo.pixelkarte-farbe'},
-                         {'name':"Carte nationale grise échelle auto",'layer':'ch.swisstopo.pixelkarte-grau'},
-                         {'name':"Atlas géologique AG25",'layer':'ch.swisstopo.geologie-geologischer_atlas'},
+                         {'name':'Carte Dufour première édition (entre 1844 et 1864)','layer':'ch.swisstopo.hiks-dufour', 'short_name': 'Dufour'},
+                         {'name':'Carte Siegfried première édition (entre 1870 et 1926)','layer':'ch.swisstopo.hiks-siegfried', 'short_name': 'Siegfried'},
+                         {'name':'Orthophoto 1946','layer':'ch.swisstopo.swissimage-product_1946', 'short_name': 'ortho_46'},
+                         {'name':'Orthophoto 10cm','layer':'ch.swisstopo.images-swissimage', 'short_name': 'ortho_actuelle'},
+                         {'name':"Carte nationale couleur 1:10'000",'layer':'ch.swisstopo.landeskarte-farbe-10', 'short_name': 'cn10_clr'},
+                         {'name':"Carte nationale grise 1:10'000",'layer':'ch.swisstopo.landeskarte-grau-10', 'short_name': 'cn10_gris'},
+                         {'name':"Carte nationale couleur 1:25'000",'layer':'ch.swisstopo.pixelkarte-farbe-pk25.noscale', 'short_name': 'cn25_clr'},
+                         {'name':"Carte nationale couleur 1:50'000",'layer':'ch.swisstopo.pixelkarte-farbe-pk50.noscale', 'short_name': 'cn50_clr'},
+                         {'name':"Carte nationale couleur échelle auto",'layer':'ch.swisstopo.pixelkarte-farbe', 'short_name': 'cn_clr_auto'},
+                         {'name':"Carte nationale grise échelle auto",'layer':'ch.swisstopo.pixelkarte-grau', 'short_name': 'cn_gris_auto'},
+                         {'name':"Atlas géologique AG25",'layer':'ch.swisstopo.geologie-geologischer_atlas', 'short_name': 'atlas_geol'},
                         ]
 
     NB_POLY_MAX = 4096*2 #nombre de poly max en largeur ou hauteur
@@ -562,9 +562,11 @@ class SwissImagesDlg (c4d.gui.GeDialog):
         #print(self.LIST_WEB_SERVICES(choix_list-1)['url_base'])
         service = self.LIST_WEB_SERVICES[choix_list-1]
         layer = service['layer']
-        #on prend le nom du service en minuscule et on remplace l'espaces par underscore
-        name =service['name'].lower().replace(' ','_')
-        name_img = f'{name}_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}_.{format}'
+        
+
+        short_name =service['short_name'] 
+        name = service['name'] #.lower().replace(' ','_')
+        name_img = f'{short_name}_{round(xmin)}_{round(ymin)}_{round(xmax)}_{round(ymax)}_.{format}'
 
         pth_dir = tex_folder(doc, subfolder = 'swisstopo_images')
         fn_img = os.path.join(pth_dir,name_img)
